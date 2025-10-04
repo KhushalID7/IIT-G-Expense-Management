@@ -16,41 +16,74 @@ const Auth = () => {
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+    const role = (formData.get("role") as string) || "employee";
 
-    // Mock authentication
-    setTimeout(() => {
-      const role = formData.get("role") as string;
-      localStorage.setItem("userRole", role);
+    try {
+      const base = (import.meta.env.VITE_API_BASE as string) || "http://localhost:5000";
+      const res = await fetch(`${base}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, email, password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || data.error || "Login failed");
+        setIsLoading(false);
+        return;
+      }
+
+      // store minimal info and navigate to role route returned by server
+      localStorage.setItem("userRole", role.toLowerCase());
       localStorage.setItem("userEmail", email);
-      toast.success("Login successful!");
+      if (data.token) localStorage.setItem("token", data.token);
+      toast.success(data.message || "Login successful!");
       setIsLoading(false);
-      navigate(`/${role}`);
-    }, 1000);
+      navigate(data.redirectTo || `/${role.toLowerCase()}`);
+    } catch (err: any) {
+      toast.error(err?.message || "Login error");
+      setIsLoading(false);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-
     const formData = new FormData(e.currentTarget);
+    const name = (formData.get("name") as string) || "";
     const email = formData.get("email") as string;
-    const company = formData.get("company") as string;
+    const password = formData.get("password") as string;
     const currency = formData.get("currency") as string;
+    const role = (formData.get("role") as string) || "employee";
 
-    // Mock signup - first user becomes admin
-    setTimeout(() => {
-      localStorage.setItem("userRole", "admin");
+    try {
+      const base = (import.meta.env.VITE_API_BASE as string) || "http://localhost:5000";
+      const res = await fetch(`${base}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, name, email, password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || data.error || "Signup failed");
+        setIsLoading(false);
+        return;
+      }
+
+      // On successful registration, set role/email and navigate to role page
+      localStorage.setItem("userRole", role.toLowerCase());
       localStorage.setItem("userEmail", email);
-      localStorage.setItem("companyName", company);
-      localStorage.setItem("companyCurrency", currency);
-      toast.success("Account created! You are now an Admin.");
+      toast.success(data.message || "Account created");
       setIsLoading(false);
-      navigate("/admin");
-    }, 1000);
+      navigate(`/${role.toLowerCase()}`);
+    } catch (err: any) {
+      toast.error(err?.message || "Signup error");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -126,6 +159,10 @@ const Auth = () => {
               <TabsContent value="signup" className="space-y-4 mt-6">
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div className="space-y-2">
+                    <Label htmlFor="signup-name">Full Name</Label>
+                    <Input id="signup-name" name="name" type="text" placeholder="John Doe" required />
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="signup-company">Company Name</Label>
                     <Input
                       id="signup-company"
@@ -134,6 +171,18 @@ const Auth = () => {
                       placeholder="Acme Inc."
                       required
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-role">Role</Label>
+                    <Select name="role" defaultValue="employee">
+                      <SelectTrigger id="signup-role">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="employee">Employee</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>

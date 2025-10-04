@@ -23,6 +23,10 @@ pnpm-debug.log*
 .env.*.local
 !.env.example
 
+# Backend env and node_modules
+backend/.env
+backend/node_modules/
+
 # OS files
 .DS_Store
 Thumbs.db
