@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Home, Users, Settings, BarChart3 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +14,13 @@ import ReportsTab from "./ReportsTab";
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
+  const [totalUsers, setTotalUsers] = useState<number | null>(null);
+  const [activeEmployees, setActiveEmployees] = useState<number | null>(null);
+  const [managersCount, setManagersCount] = useState<number | null>(null);
+  const [totalExpensesValue, setTotalExpensesValue] = useState<number | null>(null);
+  const [recentActivities, setRecentActivities] = useState<Array<any>>([]);
+
+  const base = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000';
 
   const navigation = [
     {
@@ -29,6 +36,68 @@ const AdminDashboard = () => {
     toast.success("User added successfully!");
     e.currentTarget.reset();
   };
+
+  useEffect(() => {
+    // fetch users to compute stats
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch(`${base}/api/admin/manage/users`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.users)) {
+          const users = data.users;
+          setTotalUsers(users.length);
+          setManagersCount(users.filter((u: any) => u.role === 'manager').length);
+          setActiveEmployees(users.filter((u: any) => u.role === 'employee').length);
+        } else {
+          setTotalUsers(null);
+          setManagersCount(null);
+          setActiveEmployees(null);
+        }
+      } catch (err) {
+        setTotalUsers(null);
+        setManagersCount(null);
+        setActiveEmployees(null);
+      }
+    };
+
+    // load expenses from localStorage for recent activity and total
+    const loadExpenses = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem('expenses') || '[]');
+        if (Array.isArray(stored) && stored.length > 0) {
+          // total expenses sum
+          const total = stored.reduce((acc: number, e: any) => acc + (Number(e.amount) || 0), 0);
+          setTotalExpensesValue(total);
+          // recent activities — take last 5
+          const recent = stored.slice(-5).reverse().map((e: any) => ({
+            user: e.submittedBy || e.user || 'Unknown',
+            action: e.status === 'approved' ? 'approved an expense' : 'submitted an expense',
+            amount: `${e.currency || '$'} ${e.amount}`,
+            time: e.timeAgo || new Date(e.date || Date.now()).toLocaleString(),
+          }));
+          setRecentActivities(recent);
+        } else {
+          setTotalExpensesValue(null);
+          setRecentActivities([]);
+        }
+      } catch (err) {
+        setTotalExpensesValue(null);
+        setRecentActivities([]);
+      }
+    };
+
+    fetchUsers();
+    loadExpenses();
+
+    const onUsersUpdated = () => {
+      fetchUsers();
+    };
+    window.addEventListener('users-updated', onUsersUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('users-updated', onUsersUpdated as EventListener);
+    };
+  }, []);
 
   return (
     <DashboardLayout role="admin" navigation={navigation}>
@@ -49,46 +118,13 @@ const AdminDashboard = () => {
           <TabsContent value="overview" className="space-y-6 mt-6">
 
         <div className="grid gap-6 md:grid-cols-4">
-          <StatCard title="Total Users" value="24" />
-          <StatCard title="Active Employees" value="18" />
-          <StatCard title="Managers" value="4" />
-          <StatCard title="Total Expenses" value="$45,230" />
+          <StatCard title="Total Users" value={totalUsers !== null ? totalUsers.toString() : '—'} />
+          <StatCard title="Active Employees" value={activeEmployees !== null ? activeEmployees.toString() : '—'} />
+          <StatCard title="Managers" value={managersCount !== null ? managersCount.toString() : '—'} />
+          <StatCard title="Total Expenses" value={totalExpensesValue !== null ? `$${totalExpensesValue.toLocaleString()}` : '—'} />
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Add New User</CardTitle>
-              <CardDescription>Create a new user account and assign role</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleAddUser} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="user-email">Email</Label>
-                  <Input id="user-email" type="email" placeholder="user@example.com" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="user-name">Full Name</Label>
-                  <Input id="user-name" type="text" placeholder="John Doe" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="user-role">Role</Label>
-                  <Select required>
-                    <SelectTrigger id="user-role">
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="employee">Employee</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button type="submit" className="w-full">Add User</Button>
-              </form>
-            </CardContent>
-          </Card>
-
+        <div className="grid gap-6 md:grid-cols-1">
           <Card>
             <CardHeader>
               <CardTitle>Approval Workflow</CardTitle>
@@ -140,24 +176,13 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <ActivityItem
-                user="John Doe"
-                action="submitted an expense"
-                amount="$245.00"
-                time="2 minutes ago"
-              />
-              <ActivityItem
-                user="Jane Smith"
-                action="approved an expense"
-                amount="$89.50"
-                time="15 minutes ago"
-              />
-              <ActivityItem
-                user="Mike Johnson"
-                action="submitted an expense"
-                amount="$1,250.00"
-                time="1 hour ago"
-              />
+              {recentActivities.length > 0 ? (
+                recentActivities.map((a, i) => (
+                  <ActivityItem key={i} user={a.user} action={a.action} amount={a.amount} time={a.time} />
+                ))
+              ) : (
+                <p className="text-muted-foreground">No recent activity</p>
+              )}
             </div>
           </CardContent>
         </Card>
